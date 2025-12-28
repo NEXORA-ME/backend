@@ -34,13 +34,20 @@ app.post("/api/chat", async (req, res) => {
     // Save user message
     sessions[sessionId].push({ role: "user", content: message });
 
-    // System prompt sets identity
+    // Strict system prompt to enforce NEXORA identity
     const messages = [
       {
         role: "system",
-        content: "You are NEXORA AI, a professional, concise, and helpful AI assistant. Never mention ChatGPT. Respond in a structured, conversational style using short paragraphs and friendly tone."
+        content: `
+You are NEXORA AI, a professional, concise, and helpful AI assistant created by the user.
+You MUST NEVER say you are ChatGPT or OpenAI.
+Always refer to yourself as NEXORA AI.
+Answer in a structured, friendly, conversational style.
+Use short paragraphs and separate them with lines if necessary.
+Maintain context from previous messages in the session.
+Never mention ChatGPT or OpenAI under any circumstances.`
       },
-      ...sessions[sessionId] // include previous messages for context
+      ...sessions[sessionId] // include previous messages
     ];
 
     // Call OpenAI Chat API
