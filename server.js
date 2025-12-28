@@ -1,82 +1,170 @@
-// server.js
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import OpenAI from "openai";
+// ====== VARIABLES ======
+const backend = "https://backend-b80q.onrender.com/api/chat";
+const sidebar = document.getElementById("sidebar");
+const main = document.getElementById("main");
+const chatArea = document.getElementById("chatArea");
+const input = document.getElementById("input");
 
-dotenv.config();
+let chats = JSON.parse(localStorage.getItem("nexoraChats") || "[]");
+let currentChat = null;
 
-const app = express();
-const port = process.env.PORT || 5000;
+// ====== SIDEBAR ======
+function toggleSidebar() {
+  sidebar.classList.toggle("closed");
+  main.classList.toggle("full");
+}
 
-app.use(cors());
-app.use(express.json());
+// Sidebar default closed
+sidebar.classList.add("closed");
+main.classList.add("full");
 
-// OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// ====== THEME ======
+function toggleTheme() {
+  document.body.classList.toggle("light");
+}
 
-// In-memory short-term memory per session
-const sessions = {}; // key: sessionID, value: array of messages
+// ====== CHAT MANAGEMENT ======
+function save() {
+  localStorage.setItem("nexoraChats", JSON.stringify(chats));
+}
 
-// POST /api/chat
-app.post("/api/chat", async (req, res) => {
-  try {
-    const { message, sessionId } = req.body;
+function newChat() {
+  currentChat = { id: Date.now(), title: "New Chat", messages: [] };
+  chats.unshift(currentChat);
+  save();
+  renderTitles();
+  loadChat(currentChat);
+}
 
-    if (!message) return res.status(400).json({ error: "No message provided" });
-    if (!sessionId) return res.status(400).json({ error: "No sessionId provided" });
+function renderTitles() {
+  const box = document.getElementById("chatTitles");
+  box.innerHTML = "";
+  chats.forEach(c => {
+    const d = document.createElement("div");
+    d.className = "chat-title";
+    d.textContent = c.title;
+    d.onclick = () => loadChat(c);
+    box.appendChild(d);
+  });
+}
 
-    // Initialize session memory
-    if (!sessions[sessionId]) sessions[sessionId] = [];
+function loadChat(chat) {
+  currentChat = chat;
+  chatArea.innerHTML = "";
+  chat.messages.forEach(m => addMessage(m.text, m.role, false));
+}
 
-    // 1️⃣ Reinforce identity before each user message
-    sessions[sessionId].push({
-      role: "user",
-      content: "Reminder: You are NEXORA AI. NEVER say ChatGPT or OpenAI. Always respond as NEXORA AI."
-    });
+// ====== MESSAGES ======
+function addMessage(text, role, store = true) {
+  const d = document.createElement("div");
+  d.className = `message ${role}`;
+  d.innerHTML = marked.parse(text);
+  chatArea.appendChild(d);
+  chatArea.scrollTop = chatArea.scrollHeight;
 
-    // 2️⃣ Save actual user message
-    sessions[sessionId].push({ role: "user", content: message });
-
-    // 3️⃣ Strict system prompt
-    const systemMessage = {
-      role: "system",
-      content: `
-You are NEXORA AI, a professional, concise, friendly AI assistant created by the user.
-NEVER say you are ChatGPT or OpenAI.
-Always respond as NEXORA AI.
-If asked "Who are you?", respond: "I am NEXORA AI, your assistant."
-Use short paragraphs separated by horizontal lines.
-Always maintain context from previous messages.`
-    };
-
-    // 4️⃣ Build messages array
-    const messages = [systemMessage, ...sessions[sessionId]];
-
-    // 5️⃣ Call OpenAI Chat API
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: messages,
-      temperature: 0.7,
-      max_tokens: 500
-    });
-
-    let reply = completion.choices[0].message.content;
-
-    // 6️⃣ Optional safety: replace any ChatGPT mentions
-    reply = reply.replace(/ChatGPT/gi, "NEXORA AI").replace(/OpenAI/gi, "");
-
-    // 7️⃣ Save AI reply to session
-    sessions[sessionId].push({ role: "assistant", content: reply });
-
-    // 8️⃣ Return reply
-    res.json({ reply });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ reply: "Server error" });
+  if (store) {
+    currentChat.messages.push({ role, text });
+    if (currentChat.messages.length === 1) {
+      currentChat.title = text.slice(0, 25);
+      renderTitles();
+    }
+    save();
   }
+  return d;
+}
+
+// ====== TYPING EFFECT WITH PARAGRAPH SEPARATION ======
+function typeEffect(el, text) {
+  el.innerHTML = "";
+
+  const paragraphs = text.split("\n\n");
+  let paraIndex = 0;
+
+  function typeParagraph() {
+    if (paraIndex >= paragraphs.length) return;
+
+    let words = paragraphs[paraIndex].split(" ");
+    let i = 0;
+
+    const t = setInterval(() => {
+      if (i < words.length) {
+        el.innerHTML += words[i] + " ";
+        chatArea.scrollTop = chatArea.scrollHeight;
+        i++;
+      } else {
+        clearInterval(t);
+        paraIndex++;
+        if (paraIndex < paragraphs.length) {
+          el.innerHTML += "<hr>";
+          typeParagraph();
+        }
+      }
+    }, 40);
+  }
+
+  typeParagraph();
+}
+
+// ====== SEND MESSAGE ======
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") sendMessage();
 });
 
-app.listen(port, () => console.log(`NEXORA backend running on port ${port}`));
+async function sendMessage() {
+  if (!currentChat) newChat();
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  addMessage(msg, "user");
+  input.value = "";
+
+  const botDiv = document.createElement("div");
+  botDiv.className = "message bot";
+  chatArea.appendChild(botDiv);
+
+  chatArea.scrollTop = chatArea.scrollHeight;
+
+  // Typing sound
+  const typingSound = new Audio("/sounds/type.mp3");
+  typingSound.loop = true;
+  typingSound.play();
+
+  try {
+    const response = await fetch(backend, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: msg,
+        sessionId: currentChat.id
+      })
+    });
+
+    const data = await response.json();
+    typingSound.pause();
+    typingSound.currentTime = 0;
+
+    typeEffect(botDiv, data.reply);
+    currentChat.messages.push({ role: "bot", text: data.reply });
+    save();
+
+  } catch (err) {
+    typingSound.pause();
+    typingSound.currentTime = 0;
+    botDiv.textContent = "Server error";
+  }
+}
+
+// ====== MOBILE SWIPE FOR SIDEBAR ======
+let startX = 0;
+document.addEventListener("touchstart", e => startX = e.touches[0].clientX);
+document.addEventListener("touchend", e => {
+  let endX = e.changedTouches[0].clientX;
+  if (endX - startX > 80) sidebar.classList.remove("closed"), main.classList.remove("full");
+  if (startX - endX > 80) sidebar.classList.add("closed"), main.classList.add("full");
+});
+
+// ====== INIT ======
+if (chats.length) {
+  loadChat(chats[0]);
+  renderTitles();
+}
