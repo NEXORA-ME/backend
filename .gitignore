@@ -1,15 +1,50 @@
-{
-  "name": "nexora-backend",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "openai": "^4.33.0"
-  }
-}
+# Node.js dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs (if any)
+dist/
+build/
+out/
+
+# VSCode settings
+.vscode/
+
+# Frontend cache / temp files
+*.tmp
+*.temp
+.cache/
+
+# Uploaded sounds / media (optional, if you don't want to commit)
+sounds/*.mp3
+sounds/*.wav
+
+# Ignore IDE/editor folders
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Optional: npm lock files (if you want to ignore)
+package-lock.json
+yarn.lock
+
+# Misc
+*.bak
+*.swp
