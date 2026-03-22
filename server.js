@@ -11,40 +11,56 @@ app.use(express.json());
 
 const PORT = 10000;
 const chats = {};
-
 let MODEL = null;
 
-/* Find a working Gemini model */
+/* Find Gemini model */
 async function findModel() {
-  const url = `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GEMINI_API_KEY}`;
-  const res = await fetch(url);
-  const data = await res.json();
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GEMINI_API_KEY}`
+    );
+    const data = await res.json();
 
-  const models = data.models || [];
+    const usable = (data.models || []).find(m =>
+      (m.supportedGenerationMethods || []).includes("generateContent")
+    );
 
-  const usable = models.find(m =>
-    (m.supportedGenerationMethods || []).includes("generateContent")
-  );
+    if (!usable) {
+      console.error("❌ No model found");
+      return;
+    }
 
-  if (!usable) {
-    console.error("❌ No usable Gemini model found for this key.");
-    return;
+    MODEL = usable.name;
+    console.log("✅ Using:", MODEL);
+  } catch (err) {
+    console.error("Model error:", err);
   }
-
-  MODEL = usable.name;
-  console.log("✅ Using model:", MODEL);
 }
 
-/* Start */
 await findModel();
 
+/* Home */
 app.get("/", (req, res) => {
-  res.send("Nexora Gemini backend running");
+  res.send("Nexora running");
 });
 
+/* Get chat history */
+app.get("/chats/:email", (req, res) => {
+  const email = req.params.email;
+  res.json(chats[email] || []);
+});
+
+/* Chat */
 app.post("/chat", async (req, res) => {
   const { email, message } = req.body;
-  if (!message) return res.json({ reply: "Say something 🙂" });
+
+  if (!email || !message) {
+    return res.json({ reply: "Invalid request" });
+  }
+
+  if (!MODEL) {
+    return res.json({ reply: "Model not ready yet..." });
+  }
 
   if (!chats[email]) chats[email] = [];
 
@@ -58,7 +74,10 @@ app.post("/chat", async (req, res) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: chats[email],
-          generationConfig: { temperature: 0.7 }
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 500
+          }
         })
       }
     );
@@ -66,19 +85,19 @@ app.post("/chat", async (req, res) => {
     const data = await response.json();
 
     const reply =
-      data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Hello 👋 I am Nexora AI (fallback reply).";
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "Hello 👋 I am Nexora AI";
 
     chats[email].push({ role: "model", parts: [{ text: reply }] });
 
     res.json({ reply });
 
   } catch (err) {
-    console.error("AI ERROR:", err);
-    res.json({ reply: "Hello 👋 I am Nexora AI (fallback reply)." });
+    console.error(err);
+    res.json({ reply: "Error talking to AI" });
   }
 });
 
 app.listen(PORT, () => {
-  console.log("🚀 Nexora running on port", PORT);
+  console.log("🚀 Server running on", PORT);
 });
